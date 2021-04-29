@@ -1,9 +1,33 @@
 const catchAsync = require('../utils/catchAsync.js');
-const info = require('../public/buscacursos/info_buscacursos');
 const buscaCursos = require('../services/buscacursos');
 
 exports.getCourses = catchAsync(async (req, res, next) => {
-  const { parameters, KEY_CONVERSOR } = info;
+  const parameters = {
+    cxml_semestre: '2019-2',
+    cxml_sigla: '',
+    cxml_nrc: '',
+    cxml_nombre: '',
+    cxml_profesor: '',
+    cxml_categoria: 'TODOS',
+    cxml_campus: 'TODOS',
+    cxml_unidad_academica: 'TODOS',
+  };
+
+  const KEY_CONVERSOR = {
+    semestre: 'cxml_semestre',
+    sigla: 'cxml_sigla',
+    nrc: 'cxml_nrc',
+    nombre: 'cxml_nombre',
+    profesor: 'cxml_profesor',
+    categoria: 'cxml_categoria',
+    campus: 'cxml_campus',
+    unidad_academica: 'cxml_unidad_academica',
+    vacantes: 'vacantes',
+    requisitos: 'requisitos',
+    formato: 'cxml_formato_cur',
+    formacion_general: 'cxml_area_fg',
+  };
+
   const args = req.body;
 
   Object.keys(args).forEach((arg) => {
@@ -15,5 +39,17 @@ exports.getCourses = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     data: cursos,
+  });
+});
+
+exports.getVacancy = catchAsync(async (req, res, next) => {
+  const curso = await buscaCursos.requestVacancy(
+    req.body.nrc,
+    req.body.semestre
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: curso,
   });
 });

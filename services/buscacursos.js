@@ -1,6 +1,5 @@
 const axios = require('axios');
-const cheerio = require('cheerio');
-const info = require('../public/buscacursos/info_buscacursos');
+const JSSoup = require('jssoup').default;
 
 const stripAccents = (text) => {
   // Strip accents from input String.
@@ -34,17 +33,17 @@ const requestUrl = async (url) => {
     url: url,
   });
 
-  const page = cheerio.load(res.data);
+  const soup = new JSSoup(res.data, 'lxml');
 
-  const nameBox = page('td .resultadosRowPar').toArray();
+  const nameBox = soup.findAll('tr', 'resultadosRowPar');
 
-  const nameBox2 = page('td .resultadosRowImpar').toArray();
+  const nameBox2 = soup.findAll('tr', 'resultadosRowImpar');
 
   const result = [];
   const n = nameBox.length + nameBox2.length;
 
   for (let i = 0; i < n; i += 1) {
-    if (nameBox.length >= 0 && i % 2) {
+    if (nameBox.length >= 0 && i % 2 === 0) {
       result.push(nameBox.pop());
     } else {
       result.push(nameBox2.pop());
@@ -72,36 +71,78 @@ exports.requestBuscacursos = async (params) => {
 
   const search = await requestUrl(url);
 
-  const infoIndex = info.info_index;
+  const infoIndex = {
+    NRC: 0,
+    Sigla: 1,
+    Retiro: 2,
+    Ingles: 3,
+    Seccion: 4,
+    'Aprobacion especial': 5,
+    'Area de FG': 6,
+    Formato: 7,
+    Categoria: 8,
+    Nombre: 9,
+    Profesor: 10,
+    Campus: 11,
+    Creditos: 12,
+    'Vacantes totales': 13,
+    'Vacantes disponibles': 14,
+  };
 
   const cursos = {};
-  Object.values(search).forEach((line) => {
+  search.forEach((line) => {
     const sectionHtml = [];
-    const td = line('td').toArray();
-    td.some((elem) => {
-      const table = elem('table').toArray();
-      if (table.length >= 0) {
+    line.findAll('td').every((elem) => {
+      if (elem.findAll('table').length > 0) {
         const aux = [];
-        const tr = elem('tr').toArray();
-        Object.values(tr).forEach((val) => {
-          let mods = val('td').toArray();
-          mods = mods
-            .map((m) => {
-              const texto = m.text();
-              return texto.replace('\n', '');
-            })
-            .toArray();
-          aux.push(mods);
+        elem.findAll('tr').forEach((val) => {
+          const mods = val.findAll('td');
+          const modsResult = [];
+          mods.forEach((m) => {
+            const texto = m.getText();
+            const textoResult = texto.replace(/\n/g, '');
+            modsResult.push(textoResult);
+          });
+          aux.push(modsResult);
         });
         sectionHtml.push(aux);
-        return true;
+        return false;
       }
-      let mod = elem.text();
-      mod = mod.replace('\n', '');
+      let mod = elem.getText();
+      mod = mod.replace(/\n/g, '');
       sectionHtml.push(mod);
-      return false;
+      return true;
     });
-    const infoCurso = info.info;
+    const infoCurso = {
+      NRC: null,
+      Semestre: null,
+      Sigla: null,
+      Seccion: null,
+      Retiro: null,
+      Ingles: null,
+      'Aprobacion especial': null,
+      'Area de FG': null,
+      Formato: null,
+      Categoria: null,
+      Nombre: null,
+      Profesor: null,
+      Campus: null,
+      Creditos: null,
+      'Vacantes totales': null,
+      'Vacantes disponibles': null,
+      Modulos: {
+        CLAS: [],
+        AYU: [],
+        LAB: [],
+        LIB: [],
+        PRA: [],
+        SUP: [],
+        TAL: [],
+        TER: [],
+        TES: [],
+      },
+    };
+
     infoCurso.Semestre = params.cxml_semestre;
 
     Object.keys(infoIndex).forEach((i) => {
@@ -111,8 +152,9 @@ exports.requestBuscacursos = async (params) => {
       }
     });
 
-    Object.values(sectionHtml[sectionHtml.length - 1]).forEach((i) => {
+    sectionHtml[sectionHtml.length - 1].forEach((i) => {
       infoCurso.Modulos[i[1]].push(i[0]);
+      infoCurso.Modulos[i[1]].push(i[2]);
     });
 
     if (!(infoCurso.Sigla in cursos)) {
@@ -124,4 +166,82 @@ exports.requestBuscacursos = async (params) => {
     cursos[infoCurso.Sigla][infoCurso.Seccion] = infoCurso;
   });
   return cursos;
+};
+
+exports.requestVacancy = async (nrc, semester) => {
+  // Make the requests for vacancies to BuscaCursos serves and format the
+  // info into the API response format to vancany.
+  // Args:
+  //     nrc (str): The nrc code from a specific section of a course. This
+  //     need to be a valid nrc from the semestre requested.
+  //     semester (str): Semester code of interes.
+  // Returns:
+  //     dict: Dict with the vacancy information of the section given in the API
+  //     response format.
+  let url = 'http://buscacursos.uc.cl/informacionVacReserva';
+  url += `.ajax.php?nrc=${nrc}&termcode=${semester}`;
+
+  const search = await requestUrl(url);
+
+  let results = [];
+  search.forEach((line) => {
+    const sectionHtml = line.getText().split('\n');
+    const remove = [];
+    for (let i = 0; i < sectionHtml.length; i += 1) {
+      sectionHtml[i] = sectionHtml[i].replace(/\n/g, '');
+      if (sectionHtml[i] === '') {
+        remove.push(i - remove.length);
+      }
+    }
+    remove.forEach((i) => {
+      sectionHtml.splice(i, 1);
+    });
+    const sectionHtmlResult = [];
+    sectionHtml[0].split('-').forEach((x) => {
+      sectionHtmlResult.push(x.trim());
+    });
+    sectionHtml.slice(1).forEach((x) => {
+      sectionHtmlResult.push(x.trim());
+    });
+    results.push(sectionHtmlResult);
+  });
+  const finals = { Disponibles: 0 };
+  if (results.length > 0) {
+    results = results.slice(0, -1);
+  } else {
+    results = [];
+  }
+  results.forEach((result) => {
+    if (result.length >= 3) {
+      if (result[0] === 'Vacantes libres' || result[0] === 'Vacantes Libres') {
+        if (result.length === 4) {
+          finals.Libres = [];
+          result.slice(-3).forEach((x) => {
+            finals.Libres.push(parseInt(x, 10));
+          });
+        } else {
+          const aux = result.slice(-4);
+          finals[aux[0]] = [];
+          result.slice(-3).forEach((x) => {
+            finals[aux[0]].push(parseInt(x, 10));
+          });
+        }
+      } else if (result[0].includes('TOTAL DISPONIBLES')) {
+        finals.Disponibles = parseInt(result[2], 10);
+      } else if (result.length === 5) {
+        const name = `${result[0]} - ${result[1]}`;
+        finals[name] = [];
+        result.slice(-3).forEach((x) => {
+          finals[name].push(parseInt(x, 10));
+        });
+      } else {
+        const name = `${result[0]} - ${result[1]} - ${result[2]}`;
+        finals[name] = [];
+        result.slice(-3).forEach((x) => {
+          finals[name].push(parseInt(x, 10));
+        });
+      }
+    }
+  });
+  return finals;
 };
