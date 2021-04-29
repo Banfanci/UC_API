@@ -92,9 +92,11 @@ exports.requestBuscacursos = async (params) => {
   const cursos = {};
   search.forEach((line) => {
     const sectionHtml = [];
+
     line.findAll('td').every((elem) => {
       if (elem.findAll('table').length > 0) {
         const aux = [];
+
         elem.findAll('tr').forEach((val) => {
           const mods = val.findAll('td');
           const modsResult = [];
@@ -113,6 +115,7 @@ exports.requestBuscacursos = async (params) => {
       sectionHtml.push(mod);
       return true;
     });
+
     const infoCurso = {
       NRC: null,
       Semestre: null,
@@ -187,6 +190,7 @@ exports.requestVacancy = async (nrc, semester) => {
   search.forEach((line) => {
     const sectionHtml = line.getText().split('\n');
     const remove = [];
+
     for (let i = 0; i < sectionHtml.length; i += 1) {
       sectionHtml[i] = sectionHtml[i].replace(/\n/g, '');
       if (sectionHtml[i] === '') {
@@ -196,21 +200,26 @@ exports.requestVacancy = async (nrc, semester) => {
     remove.forEach((i) => {
       sectionHtml.splice(i, 1);
     });
+
     const sectionHtmlResult = [];
     sectionHtml[0].split('-').forEach((x) => {
       sectionHtmlResult.push(x.trim());
     });
+
     sectionHtml.slice(1).forEach((x) => {
       sectionHtmlResult.push(x.trim());
     });
+
     results.push(sectionHtmlResult);
   });
+
   const finals = { Disponibles: 0 };
   if (results.length > 0) {
     results = results.slice(0, -1);
   } else {
     results = [];
   }
+
   results.forEach((result) => {
     if (result.length >= 3) {
       if (result[0] === 'Vacantes libres' || result[0] === 'Vacantes Libres') {
@@ -244,4 +253,93 @@ exports.requestVacancy = async (nrc, semester) => {
     }
   });
   return finals;
+};
+
+exports.requestRequeriments = async (sigla) => {
+  // Assamble the url with the course code of interest, request the url to UC
+  // server and parse the response into a dict with the API response format.
+  // Args:
+  //     sigla (str): Course code of interest.
+  // Returns:
+  //     dict: Dict with course requirements in API response format.
+
+  let url = 'http://catalogo.uc.cl/index.php?tmpl=component&';
+  url += `option=com_catalog&view=requisitos&sigla=${sigla}`;
+
+  const res = await axios({
+    method: 'GET',
+    url: url,
+  });
+
+  const soup = new JSSoup(res.data, 'lxml');
+
+  const search = soup.findAll('table', 'tablesorter tablesorter-blue');
+
+  const results = [];
+  search.forEach((line) => {
+    line = line.getText().split('\n');
+    const remove = [];
+
+    for (let i = 0; i < line.length; i += 1) {
+      line[i] = line[i].replace(/\t/g, '');
+      if (line[i] === '') {
+        remove.push(i - remove.length);
+      }
+    }
+
+    remove.forEach((i) => {
+      line.splice(i, 1);
+    });
+
+    line.forEach((row) => {
+      results.push(row.split('\xa0\xa0'));
+    });
+  });
+  results.forEach((item) => {
+    item[1] = item[1]
+      .replace(/^\)+|$\)+$/g, '')
+      .replace(/^\(+|$\(+$/g, '')
+      .split(' o ');
+
+    const itemStrip = [];
+    item[1].forEach((s) => {
+      itemStrip.push(
+        s
+          .replace(/^\)+|$\)+$/g, '')
+          .replace(/^\(+|$\(+$/g, '')
+          .split(' y ')
+      );
+    });
+    item[1] = itemStrip;
+
+    const itemStrip2 = [];
+    item[1].forEach((s) => {
+      if (s.length === 1) {
+        itemStrip2.push(s);
+      } else {
+        itemStrip2.push(s[0]);
+      }
+    });
+    item[1] = itemStrip2;
+
+    if (item[1][0] === 'No tiene') {
+      item[1] = [];
+    }
+  });
+
+  const response = {
+    'Relacion entre prerequisitos y restricciones': [],
+    Prerequisitos: [],
+    Equivalencias: [],
+    Restricciones: [],
+  };
+
+  if (results.length > 0) {
+    response.Prerequisitos = results[0][1];
+    response['Relacion entre prerequisitos y restricciones'] = results[1][1];
+    response.Equivalencias = results[2][1];
+    response.Restricciones = results[3][1];
+  }
+
+  return response;
 };
