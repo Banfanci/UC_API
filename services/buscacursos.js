@@ -162,7 +162,7 @@ exports.requestBuscacursos = async (params) => {
 
     if (!(infoCurso.Sigla in cursos)) {
       const auxDict = {};
-      auxDict[infoCurso.Sigla] = infoCurso;
+      auxDict[infoCurso.Seccion] = infoCurso;
       cursos[infoCurso.Sigla] = auxDict;
     }
 
@@ -264,7 +264,7 @@ exports.requestRequeriments = async (sigla) => {
   //     dict: Dict with course requirements in API response format.
 
   let url = 'http://catalogo.uc.cl/index.php?tmpl=component&';
-  url += `option=com_catalog&view=requisitos&sigla=${sigla}`;
+  url += `option=com_catalogo&view=requisitos&sigla=${sigla}`;
 
   const res = await axios({
     method: 'GET',
@@ -273,72 +273,27 @@ exports.requestRequeriments = async (sigla) => {
 
   const soup = new JSSoup(res.data, 'lxml');
 
-  const search = soup.findAll('table', 'tablesorter tablesorter-blue');
+  const search = soup.findAll('table', 'tablesorter-blue');
 
   const results = [];
   search.forEach((line) => {
-    line = line.getText().split('\n');
-    const remove = [];
-
-    for (let i = 0; i < line.length; i += 1) {
-      line[i] = line[i].replace(/\t/g, '');
-      if (line[i] === '') {
-        remove.push(i - remove.length);
-      }
-    }
-
-    remove.forEach((i) => {
-      line.splice(i, 1);
+    line.findAll('tr').forEach((sec) => {
+      results.push(sec.getText().split('&nbsp;&nbsp;'));
     });
-
-    line.forEach((row) => {
-      results.push(row.split('\xa0\xa0'));
-    });
-  });
-  results.forEach((item) => {
-    item[1] = item[1]
-      .replace(/^\)+|$\)+$/g, '')
-      .replace(/^\(+|$\(+$/g, '')
-      .split(' o ');
-
-    const itemStrip = [];
-    item[1].forEach((s) => {
-      itemStrip.push(
-        s
-          .replace(/^\)+|$\)+$/g, '')
-          .replace(/^\(+|$\(+$/g, '')
-          .split(' y ')
-      );
-    });
-    item[1] = itemStrip;
-
-    const itemStrip2 = [];
-    item[1].forEach((s) => {
-      if (s.length === 1) {
-        itemStrip2.push(s);
-      } else {
-        itemStrip2.push(s[0]);
-      }
-    });
-    item[1] = itemStrip2;
-
-    if (item[1][0] === 'No tiene') {
-      item[1] = [];
-    }
   });
 
   const response = {
-    'Relacion entre prerequisitos y restricciones': [],
     Prerequisitos: [],
-    Equivalencias: [],
+    'Relacion entre prerequisitos y restricciones': [],
     Restricciones: [],
+    Equivalencias: [],
   };
 
   if (results.length > 0) {
     response.Prerequisitos = results[0][1];
     response['Relacion entre prerequisitos y restricciones'] = results[1][1];
-    response.Equivalencias = results[2][1];
-    response.Restricciones = results[3][1];
+    response.Restricciones = results[2][1];
+    response.Equivalencias = results[3][1];
   }
 
   return response;

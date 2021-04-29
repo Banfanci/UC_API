@@ -53,3 +53,12 @@ exports.getVacancy = catchAsync(async (req, res, next) => {
     data: curso,
   });
 });
+
+exports.getRequeriments = catchAsync(async (req, res, next) => {
+  const curso = await buscaCursos.requestRequeriments(req.body.sigla);
+
+  res.status(200).json({
+    status: 'success',
+    data: curso,
+  });
+});
